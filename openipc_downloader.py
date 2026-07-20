@@ -112,6 +112,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
         self.save_dir = ctk.StringVar(value=default_save_path)
         self.auto_reconnect = ctk.BooleanVar(value=True)
         self.convert_h264 = ctk.BooleanVar(value=False)
+        self.delete_original = ctk.BooleanVar(value=False)
 
         self.is_running = False
         self.stop_requested = False
@@ -188,6 +189,9 @@ class OpenIPCFlightDownloader(ctk.CTk):
         
         convert_chk = ctk.CTkCheckBox(options_frame, text="Auto-convert H.265 to H.264 (Requires FFmpeg)", variable=self.convert_h264)
         convert_chk.pack(side="left")
+
+        delete_chk = ctk.CTkCheckBox(options_frame, text="Delete original after conversion", variable=self.delete_original)
+        delete_chk.pack(side="left", padx=(20, 0))
 
         # Bottom Action Buttons Frame (Packed FIRST at bottom!)
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -437,6 +441,12 @@ class OpenIPCFlightDownloader(ctk.CTk):
                             if new_path:
                                 conv_time = time.time() - conv_start
                                 self.log(f"    ✅ Converted: {os.path.basename(new_path)} (Took {conv_time:.1f}s)")
+                                if self.delete_original.get():
+                                    try:
+                                        os.remove(local_path)
+                                        self.log(f"    🗑️ Deleted original: {fname}")
+                                    except Exception as e:
+                                        self.log(f"    ⚠️ Could not delete original: {e}")
                             else:
                                 self.log(f"    ❌ Conversion failed (Is FFmpeg installed?)")
                     else:
