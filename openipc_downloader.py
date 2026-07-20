@@ -111,6 +111,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
         default_save_path = os.path.join(os.path.expanduser("~"), "Videos", "OpenIPC_Flights")
         self.save_dir = ctk.StringVar(value=default_save_path)
         self.auto_reconnect = ctk.BooleanVar(value=True)
+        self.convert_h264 = ctk.BooleanVar(value=False)
 
         self.is_running = False
         self.stop_requested = False
@@ -179,8 +180,14 @@ class OpenIPCFlightDownloader(ctk.CTk):
         browse_btn.grid(row=2, column=3, sticky="w", padx=5, pady=6)
 
         # Options
-        reconnect_chk = ctk.CTkCheckBox(config_frame, text="Auto-reconnect to Home Wi-Fi when finished", variable=self.auto_reconnect)
-        reconnect_chk.grid(row=3, column=0, columnspan=4, sticky="w", padx=12, pady=(4, 10))
+        options_frame = ctk.CTkFrame(config_frame, fg_color="transparent")
+        options_frame.grid(row=3, column=0, columnspan=4, sticky="w", padx=12, pady=(4, 10))
+        
+        reconnect_chk = ctk.CTkCheckBox(options_frame, text="Auto-reconnect to Home Wi-Fi", variable=self.auto_reconnect)
+        reconnect_chk.pack(side="left", padx=(0, 20))
+        
+        convert_chk = ctk.CTkCheckBox(options_frame, text="Auto-convert H.265 to H.264 (Requires FFmpeg)", variable=self.convert_h264)
+        convert_chk.pack(side="left")
 
         # Bottom Action Buttons Frame (Packed FIRST at bottom!)
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -413,6 +420,14 @@ class OpenIPCFlightDownloader(ctk.CTk):
                     if success:
                         downloaded_count += 1
                         self.log(f"    ✅ Saved: {local_path}")
+                        if self.convert_h264.get() and local_path.lower().endswith(('.mp4', '.mov')):
+                            self.log(f"    ⏳ Converting to H.264: {fname}...")
+                            self.update_status(f"Converting {fname}...", "#F59E0B")
+                            new_path = self._convert_to_h264(local_path)
+                            if new_path:
+                                self.log(f"    ✅ Converted: {os.path.basename(new_path)}")
+                            else:
+                                self.log(f"    ❌ Conversion failed (Is FFmpeg installed?)")
                     else:
                         if self.stop_requested:
                             self.log(f"    ⛔ Download cancelled: {fname}")
@@ -446,6 +461,24 @@ class OpenIPCFlightDownloader(ctk.CTk):
             self.start_btn.configure(state="normal")
             self.quick_download_btn.configure(state="normal")
             self.abort_btn.configure(state="disabled")
+
+    def _convert_to_h264(self, input_path):
+        base, ext = os.path.splitext(input_path)
+        output_path = f"{base}_h264{ext}"
+        try:
+            cmd = ["ffmpeg", "-y", "-i", input_path, "-c:v", "libx264", "-crf", "23", "-preset", "fast", "-c:a", "copy", output_path]
+            creation_flags = subprocess.CREATE_NO_WINDOW if OS_NAME == "Windows" else 0
+            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, creationflags=creation_flags)
+            if result.returncode == 0 and os.path.exists(output_path):
+                return output_path
+            else:
+                self.log(f"    [!] FFmpeg Error. Ensure ffmpeg is in your system PATH.")
+                return None
+        except FileNotFoundError:
+            return None
+        except Exception as e:
+            self.log(f"    [!] Conversion error: {e}")
+            return None
 
     def _scan_vrx_directory(self, base_url, visited=None):
         if visited is None:
