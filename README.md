@@ -17,12 +17,14 @@ As an FPV pilot using an OpenIPC digital video system, getting your flight foota
 - 📶 **Auto Wi-Fi Switching** — Automatically connects to your VRX, downloads videos, and reconnects to your Home Wi-Fi when done.
 - 🔴/🟢 **Live Connection Status** — Real-time indicator for your VRX connection status.
 - 📥 **Smart Downloads** — Skips videos you've already downloaded.
+- 🎬 **H.264 Auto-Conversion** — Optionally converts H.265 videos to H.264 on the fly for easier editing.
 - 🌍 **Cross-Platform** — Works on Windows, macOS, and Linux.
 - 🔔 **Native Notifications** — Get desktop alerts when downloads finish.
 
 ## 📋 Requirements
 - **Python 3.8+**
 - **CustomTkinter** (UI Library)
+- **FFmpeg** (Optional, only required for the H.264 auto-conversion feature)
 
 ### Installation
 
