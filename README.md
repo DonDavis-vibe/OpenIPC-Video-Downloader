@@ -44,6 +44,29 @@ As an FPV pilot using an OpenIPC digital video system, getting your flight foota
    ```
 3. Clone or download this repository.
 
+### Installing FFmpeg (Optional)
+If you want to use the **H.264 Auto-Conversion** feature, you need to have `ffmpeg` installed on your system.
+
+**Windows**
+```powershell
+# Using winget (Windows 10/11)
+winget install ffmpeg
+
+# Or using Chocolatey
+choco install ffmpeg
+```
+*(Alternatively, download from [gyan.dev](https://www.gyan.dev/ffmpeg/builds/), extract it, and add it to your system PATH).*
+
+**macOS**
+```bash
+brew install ffmpeg
+```
+
+**Linux (Ubuntu/Debian)**
+```bash
+sudo apt update && sudo apt install ffmpeg
+```
+
 ## 🚀 Usage
 
 > ⚠️ **Important:** Before running the tool, make sure your VRX is powered on and its **Wi-Fi Hotspot feature is activated** so your PC can connect to it!
