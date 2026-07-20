@@ -217,6 +217,10 @@ class OpenIPCFlightDownloader(ctk.CTk):
         self.progress_bar.pack(fill="x", padx=12, pady=4)
         self.progress_bar.set(0)
 
+        self.file_progress_bar = ctk.CTkProgressBar(status_frame, progress_color="#10B981")
+        self.file_progress_bar.pack(fill="x", padx=12, pady=4)
+        self.file_progress_bar.set(0)
+
         self.log_textbox = ctk.CTkTextbox(status_frame, font=ctk.CTkFont(family="Consolas", size=11))
         self.log_textbox.pack(fill="both", expand=True, padx=12, pady=(4, 8))
 
@@ -415,17 +419,24 @@ class OpenIPCFlightDownloader(ctk.CTk):
 
                     self.update_status(f"Downloading {idx+1}/{total_to_dl}: {fname}", "#10B981")
                     self.log(f"[*] Downloading [{idx+1}/{total_to_dl}]: {fname}...")
-
+                    
+                    self.file_progress_bar.set(0)
+                    start_time = time.time()
                     success = self._download_file(v_url, local_path)
+                    
                     if success:
+                        dl_time = time.time() - start_time
                         downloaded_count += 1
-                        self.log(f"    ✅ Saved: {local_path}")
+                        self.log(f"    ✅ Saved: {local_path} (Took {dl_time:.1f}s)")
                         if self.convert_h264.get() and local_path.lower().endswith(('.mp4', '.mov')):
                             self.log(f"    ⏳ Converting to H.264: {fname}...")
                             self.update_status(f"Converting {fname}...", "#F59E0B")
+                            self.file_progress_bar.set(0)
+                            conv_start = time.time()
                             new_path = self._convert_to_h264(local_path)
                             if new_path:
-                                self.log(f"    ✅ Converted: {os.path.basename(new_path)}")
+                                conv_time = time.time() - conv_start
+                                self.log(f"    ✅ Converted: {os.path.basename(new_path)} (Took {conv_time:.1f}s)")
                             else:
                                 self.log(f"    ❌ Conversion failed (Is FFmpeg installed?)")
                     else:
@@ -468,8 +479,31 @@ class OpenIPCFlightDownloader(ctk.CTk):
         try:
             cmd = ["ffmpeg", "-y", "-i", input_path, "-c:v", "libx264", "-crf", "23", "-preset", "fast", "-c:a", "copy", output_path]
             creation_flags = subprocess.CREATE_NO_WINDOW if OS_NAME == "Windows" else 0
-            result = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, creationflags=creation_flags)
-            if result.returncode == 0 and os.path.exists(output_path):
+            
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, creationflags=creation_flags)
+            duration_secs = 0.0
+            
+            for line in process.stderr:
+                if self.stop_requested:
+                    process.terminate()
+                    break
+                if "Duration:" in line and duration_secs == 0:
+                    match = re.search(r"Duration:\s*(\d+):(\d+):(\d+\.\d+)", line)
+                    if match:
+                        h, m, s = match.groups()
+                        duration_secs = int(h)*3600 + int(m)*60 + float(s)
+                elif "time=" in line and duration_secs > 0:
+                    match = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", line)
+                    if match:
+                        h, m, s = match.groups()
+                        current_secs = int(h)*3600 + int(m)*60 + float(s)
+                        prog = current_secs / duration_secs
+                        self.file_progress_bar.set(min(prog, 1.0))
+                        
+            process.wait()
+            
+            if process.returncode == 0 and os.path.exists(output_path):
+                self.file_progress_bar.set(1.0)
                 return output_path
             else:
                 self.log(f"    [!] FFmpeg Error. Ensure ffmpeg is in your system PATH.")
@@ -532,6 +566,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
                     bytes_dl += len(chunk)
                     if file_size > 0:
                         prog = bytes_dl / file_size
+                        self.file_progress_bar.set(min(prog, 1.0))
 
             if self.stop_requested:
                 if os.path.exists(dest_path + ".tmp"):
