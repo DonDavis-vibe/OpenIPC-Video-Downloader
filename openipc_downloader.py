@@ -347,7 +347,10 @@ class OpenIPCFlightDownloader(ctk.CTk):
                     self.log(f"    Waiting for Wi-Fi connection... ({attempt + 1}/12)")
 
                 if not connected:
-                    self.log(f"[!] Warning: Wi-Fi status did not report '{vrx_ssid}', attempting HTTP reachability check anyway...")
+                    self.log(f"[!] Warning: Could not connect to '{vrx_ssid}'.")
+                    self.log(f"    -> Have you connected to this VRX manually before?")
+                    self.log(f"    -> IMPORTANT: You must connect to the VRX manually at least ONCE so your OS saves the Wi-Fi password!")
+                    self.log(f"    -> Attempting server check anyway...")
 
             if self.stop_requested:
                 return

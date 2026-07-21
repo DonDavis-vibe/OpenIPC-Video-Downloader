@@ -70,6 +70,8 @@ sudo apt update && sudo apt install ffmpeg
 ## 🚀 Usage
 
 > ⚠️ **Important:** Before running the tool, make sure your VRX is powered on and its **Wi-Fi Hotspot feature is activated** so your PC can connect to it!
+> 
+> 💡 **First Time Setup:** You **MUST** connect your PC to the VRX Wi-Fi network manually at least once! The tool relies on your operating system (Windows/macOS/Linux) having the Wi-Fi password saved as a known network.
 
 ### Windows (Easiest)
 Simply double-click the **`run_downloader.bat`** file to launch the app!
