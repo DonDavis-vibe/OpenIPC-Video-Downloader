@@ -313,7 +313,14 @@ class OpenIPCFlightDownloader(ctk.CTk):
             return f"{h:02d}:{m:02d}:{s:02d}"
         return f"{m:02d}:{s:02d}"
 
-    def _update_eta(self, file_prog):
+    def _format_speed(self, bytes_per_sec):
+        if bytes_per_sec >= 1024 * 1024:
+            return f"{bytes_per_sec / (1024 * 1024):.1f} MB/s"
+        elif bytes_per_sec >= 1024:
+            return f"{bytes_per_sec / 1024:.1f} KB/s"
+        return f"{bytes_per_sec:.0f} B/s"
+
+    def _update_eta(self, file_prog, speed_text=""):
         now = time.time()
         file_elapsed = now - self.file_start_time
         file_eta = (file_elapsed / file_prog) - file_elapsed if file_prog > 0 else 0
@@ -322,7 +329,8 @@ class OpenIPCFlightDownloader(ctk.CTk):
         job_elapsed = now - self.job_start_time
         job_eta = (job_elapsed / overall_prog) - job_elapsed if overall_prog > 0 else 0
         
-        eta_text = (f"File: {self._format_time(file_elapsed)} elapsed, ETA: {self._format_time(file_eta)}  |  "
+        speed_str = f" | Speed: {speed_text}" if speed_text else ""
+        eta_text = (f"File: {self._format_time(file_elapsed)} elapsed, ETA: {self._format_time(file_eta)}{speed_str}  |  "
                     f"Job: {self._format_time(job_elapsed)} elapsed, ETA: {self._format_time(job_eta)}")
         
         self.eta_lbl.configure(text=eta_text)
@@ -619,7 +627,9 @@ class OpenIPCFlightDownloader(ctk.CTk):
                         self.file_progress_bar.set(min(prog, 1.0))
                         
                         if time.time() - self._last_eta_update > 0.5:
-                            self._update_eta(prog)
+                            elapsed = time.time() - self.file_start_time
+                            speed = bytes_dl / elapsed if elapsed > 0 else 0
+                            self._update_eta(prog, speed_text=self._format_speed(speed))
                             self._last_eta_update = time.time()
 
             if self.stop_requested:
