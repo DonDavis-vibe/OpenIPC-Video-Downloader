@@ -491,7 +491,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
                                     except Exception as e:
                                         self.log(f"    ⚠️ Could not delete original: {e}")
                             else:
-                                self.log(f"    ❌ Conversion failed (Is FFmpeg installed?)")
+                                self.log(f"    ❌ Conversion failed. Check the log above for details.")
                     else:
                         if self.stop_requested:
                             self.log(f"    ⛔ Download cancelled: {fname}")
@@ -537,7 +537,12 @@ class OpenIPCFlightDownloader(ctk.CTk):
             process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, creationflags=creation_flags)
             duration_secs = 0.0
             
+            last_errors = []
             for line in process.stderr:
+                last_errors.append(line.strip())
+                if len(last_errors) > 10:
+                    last_errors.pop(0)
+
                 if self.stop_requested:
                     process.terminate()
                     break
@@ -564,12 +569,14 @@ class OpenIPCFlightDownloader(ctk.CTk):
                 self.file_progress_bar.set(1.0)
                 return output_path
             else:
-                self.log(f"    [!] FFmpeg Error. Ensure ffmpeg is in your system PATH.")
+                err_out = " | ".join(last_errors[-3:]) if last_errors else "Unknown Error"
+                self.log(f"    [!] FFmpeg returned an error (code {process.returncode}): {err_out}")
                 return None
         except FileNotFoundError:
+            self.log("    [!] FileNotFoundError: 'ffmpeg' command not found. Please ensure FFmpeg is installed AND added to your system PATH.")
             return None
         except Exception as e:
-            self.log(f"    [!] Conversion error: {e}")
+            self.log(f"    [!] Conversion exception: {e}")
             return None
 
     def _scan_vrx_directory(self, base_url, visited=None):
