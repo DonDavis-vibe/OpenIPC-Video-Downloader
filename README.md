@@ -16,8 +16,10 @@ As an FPV pilot using an OpenIPC digital video system, getting your flight foota
 - 🖥️ **Modern Dark-Mode GUI** — Clean interface built with CustomTkinter.
 - 📶 **Auto Wi-Fi Switching** — Automatically connects to your VRX, downloads videos, and reconnects to your Home Wi-Fi when done.
 - 🔴/🟢 **Live Connection Status** — Real-time indicator for your VRX connection status.
+- ⏱️ **Live ETAs & Speeds** — See exact download speeds, elapsed time, and ETAs for both the current file and the overall job.
 - 📥 **Smart Downloads** — Skips videos you've already downloaded.
 - 🎬 **H.264 Auto-Conversion** — Optionally converts H.265 videos to H.264 on the fly for easier editing.
+- 🗑️ **Auto-Cleanup** — Option to automatically delete the original H.265 file after a successful conversion.
 - 🌍 **Cross-Platform** — Works on Windows, macOS, and Linux.
 - 🔔 **Native Notifications** — Get desktop alerts when downloads finish.
 
@@ -47,7 +49,10 @@ As an FPV pilot using an OpenIPC digital video system, getting your flight foota
 ### Installing FFmpeg (Optional)
 If you want to use the **H.264 Auto-Conversion** feature, you need to have `ffmpeg` installed on your system.
 
-**Windows**
+**Windows (Easiest Method)**
+Simply download the `ffmpeg.exe` file and place it directly inside the `openipc_downloader` folder (right next to `openipc_downloader.py`). The app will automatically find it!
+
+**Windows (Advanced / System PATH)**
 ```powershell
 # Using winget (Windows 10/11)
 winget install ffmpeg
