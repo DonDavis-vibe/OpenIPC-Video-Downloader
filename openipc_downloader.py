@@ -714,14 +714,14 @@ class OpenIPCFlightDownloader(ctk.CTk):
                 self.total_to_dl = len(to_download)
                 self.job_start_time = time.time()
 
-                for idx, (v_url, fname, local_path) in enumerate(to_download):
+                for idx, (v_url, orig_fname, new_fname, local_path, remote_size) in enumerate(to_download):
                     if self.stop_requested:
                         self.log("[!] Download loop aborted by user.")
                         break
 
                     self.current_idx = idx
-                    self.update_status(f"Downloading {idx+1}/{self.total_to_dl}: {fname}", "#10B981")
-                    self.log(f"[*] Downloading [{idx+1}/{self.total_to_dl}]: {fname}...")
+                    self.update_status(f"Downloading {idx+1}/{self.total_to_dl}: {new_fname}", "#10B981")
+                    self.log(f"[*] Downloading [{idx+1}/{self.total_to_dl}]: {new_fname}...")
                     
                     self.file_progress_bar.set(0)
                     self.file_start_time = time.time()
@@ -731,9 +731,20 @@ class OpenIPCFlightDownloader(ctk.CTk):
                         dl_time = time.time() - self.file_start_time
                         downloaded_count += 1
                         self.log(f"    ✅ Saved: {local_path} (Took {dl_time:.1f}s)")
+                        
+                        sync_history[orig_fname] = {
+                            "remote_size": remote_size,
+                            "local_filename": new_fname
+                        }
+                        try:
+                            with open(history_path, 'w', encoding='utf-8') as f:
+                                json.dump(sync_history, f, indent=4)
+                        except Exception as e:
+                            self.log(f"    ⚠️ Could not save history: {e}")
+
                         if self.convert_h264.get() and local_path.lower().endswith(('.mp4', '.mov')):
-                            self.log(f"    ⏳ Converting to H.264: {fname}...")
-                            self.update_status(f"Converting {fname}...", "#F59E0B")
+                            self.log(f"    ⏳ Converting to H.264: {new_fname}...")
+                            self.update_status(f"Converting {new_fname}...", "#F59E0B")
                             self.file_progress_bar.set(0)
                             self.file_start_time = time.time()
                             new_path = self._convert_to_h264(local_path)
@@ -743,16 +754,16 @@ class OpenIPCFlightDownloader(ctk.CTk):
                                 if self.delete_original.get():
                                     try:
                                         os.remove(local_path)
-                                        self.log(f"    🗑️ Deleted original: {fname}")
+                                        self.log(f"    🗑️ Deleted original: {new_fname}")
                                     except Exception as e:
                                         self.log(f"    ⚠️ Could not delete original: {e}")
                             else:
                                 self.log(f"    ❌ Conversion failed. Check the log above for details.")
                     else:
                         if self.stop_requested:
-                            self.log(f"    ⛔ Download cancelled: {fname}")
+                            self.log(f"    ⛔ Download cancelled: {new_fname}")
                         else:
-                            self.log(f"    ❌ Download failed: {fname}")
+                            self.log(f"    ❌ Download failed: {new_fname}")
 
                     self.progress_bar.set((idx + 1) / self.total_to_dl)
                     self.eta_lbl.configure(text="")
