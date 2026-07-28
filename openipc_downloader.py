@@ -7,6 +7,8 @@ import subprocess
 import platform
 import urllib.request
 import urllib.parse
+import json
+import datetime
 from html.parser import HTMLParser
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -94,7 +96,188 @@ def show_os_toast(title, message):
     except Exception:
         pass
 
+
+class VRXFileManagerWindow(ctk.CTkToplevel):
+    def __init__(self, parent, vrx_url, vrx_ssid):
+        super().__init__(parent)
+        self.parent = parent
+        self.vrx_url = vrx_url
+        self.vrx_ssid = vrx_ssid
+        self.title("VRX File Manager - SD Card Cleanup")
+        self.geometry("620x520")
+        self.minsize(520, 420)
+        
+        self.transient(parent)
+        self.grab_set()
+
+        top_frame = ctk.CTkFrame(self, fg_color="transparent")
+        top_frame.pack(fill="x", padx=15, pady=(15, 10))
+        
+        title_lbl = ctk.CTkLabel(top_frame, text="📂 VRX SD Card Videos", font=ctk.CTkFont(size=16, weight="bold"))
+        title_lbl.pack(side="left")
+        
+        self.refresh_btn = ctk.CTkButton(top_frame, text="🔄 Refresh", width=90, command=self.load_videos, fg_color="#3B82F6", hover_color="#2563EB")
+        self.refresh_btn.pack(side="right", padx=(5, 0))
+
+        self.delete_all_btn = ctk.CTkButton(top_frame, text="🗑️ Delete All", width=100, command=self.delete_all_videos, fg_color="#EF4444", hover_color="#DC2626")
+        self.delete_all_btn.pack(side="right")
+
+        self.status_lbl = ctk.CTkLabel(self, text="Connecting to VRX...", font=ctk.CTkFont(size=12), text_color="#F59E0B")
+        self.status_lbl.pack(fill="x", padx=15, pady=(0, 5))
+
+        self.list_frame = ctk.CTkScrollableFrame(self, corner_radius=10)
+        self.list_frame.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+
+        self.video_rows = []
+        self.load_videos()
+
+    def load_videos(self):
+        self.status_lbl.configure(text="Scanning VRX for videos...", text_color="#F59E0B")
+        self.refresh_btn.configure(state="disabled")
+        self.delete_all_btn.configure(state="disabled")
+        
+        for child in self.list_frame.winfo_children():
+            child.destroy()
+        self.video_rows.clear()
+
+        import threading
+        threading.Thread(target=self._scan_thread, daemon=True).start()
+
+    def _scan_thread(self):
+        try:
+            url_base = self.vrx_url.strip()
+            if not url_base.endswith('/'): url_base += '/'
+            
+            found = []
+            try:
+                req = urllib.request.urlopen(url_base, timeout=4)
+                html = req.read().decode('utf-8', errors='ignore')
+                class LinkParser(HTMLParser):
+                    def __init__(self, base):
+                        super().__init__()
+                        self.base = base
+                        self.links = set()
+                    def handle_starttag(self, tag, attrs):
+                        if tag == 'a' or tag == 'source':
+                            for k, v in attrs:
+                                if k in ('href', 'src') and v and v.lower().endswith(('.mp4', '.mov')):
+                                    full = urllib.parse.urljoin(self.base, v)
+                                    self.links.add(full)
+
+                parser = LinkParser(url_base)
+                parser.feed(html)
+                found = sorted(list(parser.links))
+            except Exception as e:
+                self.after(0, lambda: self.status_lbl.configure(text=f"Error connecting to VRX: {e}", text_color="#EF4444"))
+                self.after(0, lambda: self.refresh_btn.configure(state="normal"))
+                return
+
+            if not found:
+                self.after(0, lambda: self.status_lbl.configure(text="No videos found on VRX SD Card.", text_color="#10B981"))
+                self.after(0, lambda: self.refresh_btn.configure(state="normal"))
+                return
+
+            video_info = []
+            for idx, v_url in enumerate(found):
+                fname = os.path.basename(urllib.parse.unquote(v_url))
+                size_str = "Unknown size"
+                try:
+                    req = urllib.request.Request(v_url, method='HEAD')
+                    with urllib.request.urlopen(req, timeout=2) as resp:
+                        size_bytes = int(resp.headers.get('Content-Length', 0))
+                        if size_bytes > 0:
+                            size_str = f"{size_bytes / (1024*1024):.1f} MB"
+                except Exception:
+                    pass
+                video_info.append((fname, size_str))
+
+            self.after(0, lambda: self._populate_list(video_info))
+        except Exception as e:
+            self.after(0, lambda: self.status_lbl.configure(text=f"Scan error: {e}", text_color="#EF4444"))
+            self.after(0, lambda: self.refresh_btn.configure(state="normal"))
+
+    def _populate_list(self, video_info):
+        self.status_lbl.configure(text=f"Found {len(video_info)} video(s) on VRX.", text_color="#10B981")
+        self.refresh_btn.configure(state="normal")
+        if video_info:
+            self.delete_all_btn.configure(state="normal")
+
+        for fname, size_str in video_info:
+            row_frame = ctk.CTkFrame(self.list_frame, fg_color=("#2B2B2B", "#1F1F1F"), corner_radius=8)
+            row_frame.pack(fill="x", pady=4, padx=4)
+
+            name_lbl = ctk.CTkLabel(row_frame, text=fname, font=ctk.CTkFont(size=13, weight="bold"), anchor="w")
+            name_lbl.pack(side="left", padx=12, pady=10, fill="x", expand=True)
+
+            size_lbl = ctk.CTkLabel(row_frame, text=size_str, font=ctk.CTkFont(size=12), text_color="gray", width=80)
+            size_lbl.pack(side="left", padx=10)
+
+            del_btn = ctk.CTkButton(row_frame, text="🗑️ Delete", width=80, height=32, fg_color="#EF4444", hover_color="#DC2626",
+                                    command=lambda f=fname, rf=row_frame: self.delete_single_video(f, rf))
+            del_btn.pack(side="right", padx=10, pady=6)
+            self.video_rows.append((fname, row_frame))
+
+    def delete_single_video(self, fname, row_frame):
+        if not messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{fname}' from the VRX?"):
+            return
+        
+        self.status_lbl.configure(text=f"Deleting {fname}...", text_color="#F59E0B")
+        
+        def _del_thread():
+            try:
+                url_base = self.vrx_url.strip()
+                if not url_base.endswith('/'): url_base += '/'
+                del_url = f"{url_base}delete/{urllib.parse.quote(fname)}"
+                urllib.request.urlopen(del_url, timeout=5)
+                
+                def _on_success():
+                    row_frame.destroy()
+                    self.video_rows = [r for r in self.video_rows if r[0] != fname]
+                    self.status_lbl.configure(text=f"Deleted {fname}", text_color="#10B981")
+                    if not self.video_rows:
+                        self.delete_all_btn.configure(state="disabled")
+                self.after(0, _on_success)
+            except Exception as e:
+                self.after(0, lambda: self.status_lbl.configure(text=f"Failed to delete {fname}: {e}", text_color="#EF4444"))
+
+        import threading
+        threading.Thread(target=_del_thread, daemon=True).start()
+
+    def delete_all_videos(self):
+        if not self.video_rows:
+            return
+        if not messagebox.askyesno("Confirm Delete All", f"Are you sure you want to PERMANENTLY DELETE all {len(self.video_rows)} video(s) from the VRX SD Card?"):
+            return
+        
+        self.status_lbl.configure(text="Deleting all videos...", text_color="#F59E0B")
+        self.delete_all_btn.configure(state="disabled")
+        self.refresh_btn.configure(state="disabled")
+
+        def _del_all_thread():
+            deleted_count = 0
+            url_base = self.vrx_url.strip()
+            if not url_base.endswith('/'): url_base += '/'
+
+            import time
+            for fname, row_frame in list(self.video_rows):
+                try:
+                    del_url = f"{url_base}delete/{urllib.parse.quote(fname)}"
+                    urllib.request.urlopen(del_url, timeout=5)
+                    deleted_count += 1
+                    self.after(0, row_frame.destroy)
+                except Exception as e:
+                    print(f"Error deleting {fname}: {e}")
+                time.sleep(0.1)
+
+            self.after(0, lambda: self.status_lbl.configure(text=f"Deleted {deleted_count} video(s).", text_color="#10B981"))
+            self.after(0, lambda: self.refresh_btn.configure(state="normal"))
+            self.after(0, self.load_videos)
+
+        import threading
+        threading.Thread(target=_del_all_thread, daemon=True).start()
+
 class OpenIPCFlightDownloader(ctk.CTk):
+
     def __init__(self):
         super().__init__()
 
@@ -202,18 +385,22 @@ class OpenIPCFlightDownloader(ctk.CTk):
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.pack(side="bottom", fill="x", padx=15, pady=(6, 12))
 
-        self.start_btn = ctk.CTkButton(btn_frame, text="⚡ Start Sync & Download", font=ctk.CTkFont(size=14, weight="bold"),
+        self.start_btn = ctk.CTkButton(btn_frame, text="⚡ Start Sync", font=ctk.CTkFont(size=14, weight="bold"),
                                         fg_color="#10B981", hover_color="#059669", height=44, command=self.start_sync_thread)
-        self.start_btn.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self.start_btn.pack(side="left", fill="x", expand=True, padx=(0, 3))
 
-        self.quick_download_btn = ctk.CTkButton(btn_frame, text="📥 Download Only", font=ctk.CTkFont(size=12),
-                                                fg_color="#4F46E5", hover_color="#4338CA", height=44, command=lambda: self.start_sync_thread(skip_wifi=True))
-        self.quick_download_btn.pack(side="left", fill="x", expand=True, padx=4)
+        self.quick_download_btn = ctk.CTkButton(btn_frame, text="📥 Download Only", font=ctk.CTkFont(size=12, weight="bold"),
+                                                fg_color="#3B82F6", hover_color="#2563EB", height=44, command=lambda: self.start_sync_thread(skip_wifi=True))
+        self.quick_download_btn.pack(side="left", fill="x", expand=True, padx=3)
+
+        self.manage_vrx_btn = ctk.CTkButton(btn_frame, text="📂 Manage VRX Files", font=ctk.CTkFont(size=12, weight="bold"),
+                                            fg_color="#F59E0B", hover_color="#D97706", height=44, command=self.open_file_manager)
+        self.manage_vrx_btn.pack(side="left", fill="x", expand=True, padx=3)
 
         # Abort Button (Initially Disabled)
-        self.abort_btn = ctk.CTkButton(btn_frame, text="⛔ Abort Sync", font=ctk.CTkFont(size=13, weight="bold"),
+        self.abort_btn = ctk.CTkButton(btn_frame, text="⛔ Abort", font=ctk.CTkFont(size=13, weight="bold"),
                                         fg_color="#EF4444", hover_color="#DC2626", height=44, state="disabled", command=self.request_abort)
-        self.abort_btn.pack(side="right", fill="x", expand=True, padx=(4, 0))
+        self.abort_btn.pack(side="right", fill="x", expand=True, padx=(3, 0))
 
         # Status & Progress Frame (Takes remaining space)
         status_frame = ctk.CTkFrame(self, corner_radius=10)
@@ -335,6 +522,9 @@ class OpenIPCFlightDownloader(ctk.CTk):
         
         self.eta_lbl.configure(text=eta_text)
 
+    def open_file_manager(self):
+        VRXFileManagerWindow(self, self.vrx_url.get().strip(), self.vrx_ssid.get().strip())
+
     def request_abort(self):
         if self.is_running:
             self.stop_requested = True
@@ -350,6 +540,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
 
         self.start_btn.configure(state="disabled")
         self.quick_download_btn.configure(state="disabled")
+        self.manage_vrx_btn.configure(state="disabled")
         self.abort_btn.configure(state="normal")
 
         threading.Thread(target=self._run_sync, args=(skip_wifi,), daemon=True).start()
@@ -419,6 +610,15 @@ class OpenIPCFlightDownloader(ctk.CTk):
             self.update_status("Scanning VRX for video files...", "#F59E0B")
             self.log("[*] Crawling VRX directory listing for videos...")
             
+            history_path = os.path.join(target_dir, ".sync_history.json")
+            sync_history = {}
+            if os.path.exists(history_path):
+                try:
+                    with open(history_path, "r", encoding="utf-8") as f:
+                        sync_history = json.load(f)
+                except Exception:
+                    pass
+
             found_videos = self._scan_vrx_directory(url_base)
             self.log(f"[+] Found {len(found_videos)} video file(s) on VRX.")
 
@@ -431,21 +631,29 @@ class OpenIPCFlightDownloader(ctk.CTk):
                     if self.stop_requested:
                         break
                     fname = os.path.basename(urllib.parse.unquote(v_url))
-                    local_path = os.path.join(target_dir, fname)
                     
-                    if os.path.exists(local_path):
-                        try:
-                            req = urllib.request.Request(v_url, method='HEAD')
-                            with urllib.request.urlopen(req, timeout=3) as resp:
-                                remote_size = int(resp.headers.get('Content-Length', 0))
-                                local_size = os.path.getsize(local_path)
-                                if remote_size > 0 and remote_size == local_size:
-                                    self.log(f"[-] Skipping already downloaded: {fname}")
-                                    continue
-                        except Exception:
-                            self.log(f"[-] Local file exists: {fname} (Skipping)")
-                            continue
-                    to_download.append((v_url, fname, local_path))
+                    try:
+                        req = urllib.request.Request(v_url, method='HEAD')
+                        with urllib.request.urlopen(req, timeout=3) as resp:
+                            remote_size = int(resp.headers.get('Content-Length', 0))
+                            
+                            if fname in sync_history and sync_history[fname].get('remote_size') == remote_size:
+                                self.log(f"[-] Skipping (in history): {fname}")
+                                continue
+                            
+                            local_path = os.path.join(target_dir, fname)
+                            if os.path.exists(local_path) and os.path.getsize(local_path) == remote_size:
+                                self.log(f"[-] Skipping (exists locally): {fname}")
+                                continue
+                                
+                    except Exception as e:
+                        remote_size = 0
+                        
+                    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
+                    new_fname = f"{today_str}_{fname}"
+                    local_path = os.path.join(target_dir, new_fname)
+                    
+                    to_download.append((v_url, fname, new_fname, local_path, remote_size))
 
                 if self.stop_requested:
                     self.log("[!] Sync aborted by user.")
@@ -525,6 +733,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
             self.stop_requested = False
             self.start_btn.configure(state="normal")
             self.quick_download_btn.configure(state="normal")
+            self.manage_vrx_btn.configure(state="normal")
             self.abort_btn.configure(state="disabled")
 
     def _convert_to_h264(self, input_path):
@@ -660,3 +869,4 @@ class OpenIPCFlightDownloader(ctk.CTk):
 if __name__ == "__main__":
     app = OpenIPCFlightDownloader()
     app.mainloop()
+
