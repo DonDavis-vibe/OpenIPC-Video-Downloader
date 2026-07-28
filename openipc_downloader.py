@@ -353,6 +353,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
         self.auto_reconnect = ctk.BooleanVar(value=True)
         self.convert_h264 = ctk.BooleanVar(value=False)
         self.delete_original = ctk.BooleanVar(value=False)
+        self.delete_from_vrx = ctk.BooleanVar(value=False)
 
         self.is_running = False
         self.stop_requested = False
@@ -425,18 +426,23 @@ class OpenIPCFlightDownloader(ctk.CTk):
         browse_btn = ctk.CTkButton(config_frame, text="Browse", width=80, command=self._browse_folder)
         browse_btn.grid(row=2, column=3, sticky="w", padx=5, pady=6)
 
-        # Options
+        # Options (2-row layout)
         options_frame = ctk.CTkFrame(config_frame, fg_color="transparent")
         options_frame.grid(row=3, column=0, columnspan=4, sticky="w", padx=12, pady=(4, 10))
         
-        reconnect_chk = ctk.CTkCheckBox(options_frame, text="Auto-reconnect to Home Wi-Fi", variable=self.auto_reconnect)
+        opt_row1 = ctk.CTkFrame(options_frame, fg_color="transparent")
+        opt_row1.pack(fill="x", pady=(0, 4))
+        reconnect_chk = ctk.CTkCheckBox(opt_row1, text="Auto-reconnect to Home Wi-Fi", variable=self.auto_reconnect)
         reconnect_chk.pack(side="left", padx=(0, 20))
-        
-        convert_chk = ctk.CTkCheckBox(options_frame, text="Auto-convert H.265 to H.264 (Requires FFmpeg)", variable=self.convert_h264)
+        convert_chk = ctk.CTkCheckBox(opt_row1, text="Auto-convert H.265 to H.264 (Requires FFmpeg)", variable=self.convert_h264)
         convert_chk.pack(side="left")
 
-        delete_chk = ctk.CTkCheckBox(options_frame, text="Delete original after conversion", variable=self.delete_original)
-        delete_chk.pack(side="left", padx=(20, 0))
+        opt_row2 = ctk.CTkFrame(options_frame, fg_color="transparent")
+        opt_row2.pack(fill="x", pady=(2, 0))
+        delete_chk = ctk.CTkCheckBox(opt_row2, text="Delete local H.265 after conversion", variable=self.delete_original)
+        delete_chk.pack(side="left", padx=(0, 20))
+        delete_vrx_chk = ctk.CTkCheckBox(opt_row2, text="🗑️ Auto-delete from VRX SD card after sync", variable=self.delete_from_vrx, fg_color="#EF4444", hover_color="#DC2626", command=self._on_delete_from_vrx_toggle)
+        delete_vrx_chk.pack(side="left")
 
         # Bottom Action Buttons Frame (Packed FIRST at bottom!)
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -483,6 +489,15 @@ class OpenIPCFlightDownloader(ctk.CTk):
 
         self.log_textbox = ctk.CTkTextbox(status_frame, font=ctk.CTkFont(family="Consolas", size=11))
         self.log_textbox.pack(fill="both", expand=True, padx=12, pady=(4, 8))
+
+    def _on_delete_from_vrx_toggle(self):
+        if self.delete_from_vrx.get():
+            msg = ("⚠️ RISK WARNING: Automatic VRX SD Card Wiping!\n\n"
+                   "Enabling this option will permanently delete each video from your VRX SD card over HTTP "
+                   "immediately after it is successfully downloaded and verified on your PC.\n\n"
+                   "Make sure your PC's save folder is backed up. Are you sure you want to enable automatic SD card deletion?")
+            if not messagebox.askyesno("⚠️ Risk Warning: Auto-Delete from VRX", msg):
+                self.delete_from_vrx.set(False)
 
     def _browse_folder(self):
         selected = filedialog.askdirectory(initialdir=self.save_dir.get())
@@ -701,13 +716,14 @@ class OpenIPCFlightDownloader(ctk.CTk):
                         with urllib.request.urlopen(req, timeout=3) as resp:
                             remote_size = int(resp.headers.get('Content-Length', 0))
                             
+                            size_mb = f" ({remote_size/(1024*1024):.1f} MB)" if remote_size > 0 else ""
                             if fname in sync_history and sync_history[fname].get('remote_size') == remote_size:
-                                self.log(f"[-] Skipping (in history): {fname}")
+                                self.log(f"[-] Skipping (in history): {fname}{size_mb}")
                                 continue
                             
                             local_path = os.path.join(target_dir, fname)
                             if os.path.exists(local_path) and os.path.getsize(local_path) == remote_size:
-                                self.log(f"[-] Skipping (exists locally): {fname}")
+                                self.log(f"[-] Skipping (exists locally): {fname}{size_mb}")
                                 continue
                                 
                     except Exception as e:
@@ -737,7 +753,8 @@ class OpenIPCFlightDownloader(ctk.CTk):
 
                     self.current_idx = idx
                     self.update_status(f"Downloading {idx+1}/{self.total_to_dl}: {new_fname}", "#10B981")
-                    self.log(f"[*] Downloading [{idx+1}/{self.total_to_dl}]: {new_fname}...")
+                    size_mb_str = f" ({remote_size/(1024*1024):.1f} MB)" if remote_size > 0 else ""
+                    self.log(f"[*] Downloading [{idx+1}/{self.total_to_dl}]: {new_fname}{size_mb_str}...")
                     
                     self.file_progress_bar.set(0)
                     self.file_start_time = time.time()
@@ -746,7 +763,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
                     if success:
                         dl_time = time.time() - self.file_start_time
                         downloaded_count += 1
-                        self.log(f"    ✅ Saved: {local_path} (Took {dl_time:.1f}s)")
+                        self.log(f"    ✅ Saved: {local_path}{size_mb_str} (Took {dl_time:.1f}s)")
                         
                         sync_history[orig_fname] = {
                             "remote_size": remote_size,
@@ -776,6 +793,15 @@ class OpenIPCFlightDownloader(ctk.CTk):
                                         self.log(f"    ⚠️ Could not delete original: {e}")
                             else:
                                 self.log(f"    ❌ Conversion failed. Check the log above for details.")
+
+                        if self.delete_from_vrx.get():
+                            self.log(f"    🗑️ Auto-deleting from VRX SD card: {orig_fname}...")
+                            try:
+                                del_url = f"{url_base}delete/{urllib.parse.quote(orig_fname)}"
+                                urllib.request.urlopen(del_url, timeout=5)
+                                self.log(f"    ✅ Erased from VRX SD card: {orig_fname}")
+                            except Exception as e:
+                                self.log(f"    ⚠️ Could not erase from VRX SD card: {e}")
                     else:
                         if self.stop_requested:
                             self.log(f"    ⛔ Download cancelled: {new_fname}")
