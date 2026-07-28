@@ -150,7 +150,16 @@ class VRXFileManagerWindow(ctk.CTkToplevel):
             
             found = []
             try:
-                req = urllib.request.urlopen(url_base, timeout=4)
+                try:
+                    req = urllib.request.urlopen(url_base, timeout=3)
+                except Exception:
+                    if self.vrx_ssid:
+                        self.after(0, lambda: self.status_lbl.configure(text=f"Switching Wi-Fi to '{self.vrx_ssid}'...", text_color="#F59E0B"))
+                        connect_to_wifi(self.vrx_ssid)
+                        import time; time.sleep(3)
+                        req = urllib.request.urlopen(url_base, timeout=4)
+                    else:
+                        raise
                 html = req.read().decode('utf-8', errors='ignore')
                 class LinkParser(HTMLParser):
                     def __init__(self, base):
