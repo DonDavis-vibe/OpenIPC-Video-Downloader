@@ -469,12 +469,16 @@ class OpenIPCFlightDownloader(ctk.CTk):
         self.eta_lbl = ctk.CTkLabel(status_frame, text="", font=ctk.CTkFont(size=11), text_color="gray")
         self.eta_lbl.pack(anchor="w", padx=12, pady=(0, 4))
 
+        self.job_progress_lbl = ctk.CTkLabel(status_frame, text="Overall Job Progress: Idle", font=ctk.CTkFont(size=11, weight="bold"), text_color="#60A5FA")
+        self.job_progress_lbl.pack(anchor="w", padx=12, pady=(2, 0))
         self.progress_bar = ctk.CTkProgressBar(status_frame)
-        self.progress_bar.pack(fill="x", padx=12, pady=4)
+        self.progress_bar.pack(fill="x", padx=12, pady=(2, 6))
         self.progress_bar.set(0)
 
+        self.file_progress_lbl = ctk.CTkLabel(status_frame, text="Current File Progress: Idle", font=ctk.CTkFont(size=11, weight="bold"), text_color="#10B981")
+        self.file_progress_lbl.pack(anchor="w", padx=12, pady=(2, 0))
         self.file_progress_bar = ctk.CTkProgressBar(status_frame, progress_color="#10B981")
-        self.file_progress_bar.pack(fill="x", padx=12, pady=4)
+        self.file_progress_bar.pack(fill="x", padx=12, pady=(2, 6))
         self.file_progress_bar.set(0)
 
         self.log_textbox = ctk.CTkTextbox(status_frame, font=ctk.CTkFont(family="Consolas", size=11))
@@ -572,6 +576,9 @@ class OpenIPCFlightDownloader(ctk.CTk):
         overall_prog = (self.current_idx + file_prog) / self.total_to_dl if self.total_to_dl > 0 else 0
         job_elapsed = now - self.job_start_time
         job_eta = (job_elapsed / overall_prog) - job_elapsed if overall_prog > 0 else 0
+        
+        job_pct = int(overall_prog * 100)
+        self.job_progress_lbl.configure(text=f"Overall Job Progress: {self.current_idx + 1} of {self.total_to_dl} files ({job_pct}%)")
         
         speed_str = f" | Speed: {speed_text}" if speed_text else ""
         eta_text = (f"File: {self._format_time(file_elapsed)} elapsed, ETA: {self._format_time(file_eta)}{speed_str}  |  "
@@ -754,6 +761,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
                         if self.convert_h264.get() and local_path.lower().endswith(('.mp4', '.mov')):
                             self.log(f"    ⏳ Converting to H.264: {new_fname}...")
                             self.update_status(f"Converting {new_fname}...", "#F59E0B")
+                            self.file_progress_lbl.configure(text=f"Current File Progress: Converting H.264...")
                             self.file_progress_bar.set(0)
                             self.file_start_time = time.time()
                             new_path = self._convert_to_h264(local_path)
@@ -780,9 +788,13 @@ class OpenIPCFlightDownloader(ctk.CTk):
                 if self.stop_requested:
                     self.log(f"\n[!] Sync Aborted. Downloaded {downloaded_count} file(s) before abort.")
                     self.update_status("Sync Aborted", "#EF4444")
+                    self.job_progress_lbl.configure(text=f"Overall Job Progress: Aborted ({downloaded_count}/{self.total_to_dl} files)")
+                    self.file_progress_lbl.configure(text="Current File Progress: Idle")
                 else:
                     self.log(f"\n[🎉] Download Complete! ({downloaded_count}/{self.total_to_dl} files downloaded)")
                     show_os_toast("OpenIPC VRX Sync", f"Downloaded {downloaded_count} new flight video(s)!")
+                    self.job_progress_lbl.configure(text=f"Overall Job Progress: Completed ({downloaded_count}/{self.total_to_dl} files, 100%)")
+                    self.file_progress_lbl.configure(text="Current File Progress: Idle")
 
             if not skip_wifi and self.auto_reconnect.get() and home_ssid:
                 self.update_status(f"Reconnecting to Home Wi-Fi ({home_ssid})...", "#F59E0B")
@@ -910,7 +922,12 @@ class OpenIPCFlightDownloader(ctk.CTk):
                         prog = bytes_dl / file_size
                         self.file_progress_bar.set(min(prog, 1.0))
                         
-                        if time.time() - self._last_eta_update > 0.5:
+                        if time.time() - self._last_eta_update > 0.25:
+                            mb_dl = bytes_dl / (1024 * 1024)
+                            mb_tot = file_size / (1024 * 1024)
+                            pct = int(prog * 100)
+                            self.file_progress_lbl.configure(text=f"Current File Progress: {mb_dl:.1f} MB / {mb_tot:.1f} MB ({pct}%)")
+                            
                             elapsed = time.time() - self.file_start_time
                             speed = bytes_dl / elapsed if elapsed > 0 else 0
                             self._update_eta(prog, speed_text=self._format_speed(speed))
