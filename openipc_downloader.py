@@ -632,7 +632,7 @@ class OpenIPCFlightDownloader(ctk.CTk):
 
     def _run_sync(self, skip_wifi):
         try:
-            target_dir = self.save_dir.get()
+            target_dir = self.save_dir.get().strip()
             os.makedirs(target_dir, exist_ok=True)
             vrx_ssid = self.vrx_ssid.get().strip()
             home_ssid = self.home_ssid.get().strip()
