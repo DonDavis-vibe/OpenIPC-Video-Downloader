@@ -119,5 +119,5 @@ sudo apt update && sudo apt install ffmpeg
 
 ---
 
-## 📄 License
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## 🍻 License
+This project is licensed under the **"Beer-ware" License** (Revision 42) - see the [LICENSE](LICENSE) file for details.
