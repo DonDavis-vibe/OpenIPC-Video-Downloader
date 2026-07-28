@@ -2,6 +2,8 @@
 
 A cross-platform GUI tool designed to automate downloading, organizing, and converting flight footage from your OpenIPC VRX (Video Receiver).
 
+![OpenIPC VRX Downloader GUI](screenshot.png)
+
 ---
 
 ### 💡 Why is this useful?
