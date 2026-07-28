@@ -706,28 +706,47 @@ class OpenIPCFlightDownloader(ctk.CTk):
                 self.update_status("No video files found", "#3B82F6")
             else:
                 to_download = []
+                local_files = os.listdir(target_dir) if os.path.exists(target_dir) else []
                 for v_url in found_videos:
                     if self.stop_requested:
                         break
                     fname = os.path.basename(urllib.parse.unquote(v_url))
                     
+                    remote_size = 0
                     try:
                         req = urllib.request.Request(v_url, method='HEAD')
                         with urllib.request.urlopen(req, timeout=3) as resp:
                             remote_size = int(resp.headers.get('Content-Length', 0))
-                            
-                            size_mb = f" ({remote_size/(1024*1024):.1f} MB)" if remote_size > 0 else ""
-                            if fname in sync_history and sync_history[fname].get('remote_size') == remote_size:
-                                self.log(f"[-] Skipping (in history): {fname}{size_mb}")
-                                continue
-                            
-                            local_path = os.path.join(target_dir, fname)
-                            if os.path.exists(local_path) and os.path.getsize(local_path) == remote_size:
-                                self.log(f"[-] Skipping (exists locally): {fname}{size_mb}")
-                                continue
-                                
-                    except Exception as e:
-                        remote_size = 0
+                    except Exception:
+                        pass
+
+                    size_mb = f" ({remote_size/(1024*1024):.1f} MB)" if remote_size > 0 else ""
+                    if fname in sync_history and (remote_size == 0 or sync_history[fname].get('remote_size', -1) in (remote_size, 0)):
+                        self.log(f"[-] Skipping (in history): {fname}{size_mb}")
+                        continue
+                    
+                    is_local = False
+                    matching_lf = ""
+                    base_no_ext, ext = os.path.splitext(fname)
+                    for lf in local_files:
+                        if lf == fname or lf.endswith("_" + fname):
+                            is_local = True
+                            matching_lf = lf
+                            break
+                        if lf == f"{base_no_ext}_h264{ext}" or lf.endswith(f"_{base_no_ext}_h264{ext}"):
+                            is_local = True
+                            matching_lf = lf
+                            break
+
+                    if is_local:
+                        self.log(f"[-] Skipping (exists locally): {fname}{size_mb}")
+                        sync_history[fname] = {"remote_size": remote_size, "local_filename": matching_lf}
+                        try:
+                            with open(history_path, 'w', encoding='utf-8') as f:
+                                json.dump(sync_history, f, indent=4)
+                        except Exception:
+                            pass
+                        continue
                         
                     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
                     new_fname = f"{today_str}_{fname}"
