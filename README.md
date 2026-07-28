@@ -17,7 +17,9 @@ As an FPV pilot using an OpenIPC digital video system, getting your flight foota
 - 📶 **Auto Wi-Fi Switching** — Automatically connects to your VRX, downloads videos, and reconnects to your Home Wi-Fi when done.
 - 🔴/🟢 **Live Connection Status** — Real-time indicator for your VRX connection status.
 - ⏱️ **Live ETAs & Speeds** — See exact download speeds, elapsed time, and ETAs for both the current file and the overall job.
-- 📥 **Smart Downloads** — Skips videos you've already downloaded.
+- 📥 **Smart Downloads & Sync History** — Skips videos you've already downloaded using an internal `.sync_history.json` ledger and smart file size checking.
+- 📅 **Automatic Date Prefixing** — Automatically prefixes downloaded footage with today's date (e.g., `2026-07-28_0005...mp4`) so you can easily organize flights even if the VRX internal clock reset to 2017.
+- 📂 **Visual VRX File Manager** — Interactive popup window to view all videos on your VRX SD card, see file sizes in MB, check download status (`✅ Saved` vs `⚠️ NOT DOWNLOADED`), and selectively delete files with safety warnings.
 - 🎬 **H.264 Auto-Conversion** — Optionally converts H.265 videos to H.264 on the fly for easier editing.
 - 🗑️ **Auto-Cleanup** — Option to automatically delete the original H.265 file after a successful conversion.
 - 🌍 **Cross-Platform** — Works on Windows, macOS, and Linux.
@@ -91,7 +93,8 @@ python3 openipc_downloader.py
 1. **VRX Wi-Fi SSID:** Enter the Wi-Fi name of your VRX (e.g., `OpenIPC GS`).
 2. **Home Wi-Fi SSID:** Enter your home internet Wi-Fi name (so the tool can reconnect you later).
 3. **Save Folder:** Choose where you want your flight videos saved.
-4. Click **`⚡ Start Sync & Download`**!
+4. Click **`⚡ Start Sync`**!
+5. **Clean SD Card:** Click **`📂 Manage VRX Files`** to open the interactive SD card cleaner. You will see every video on your VRX along with its file size in MB and a visual indicator showing if it has already been saved to your PC (`✅ Saved` vs `⚠️ NOT DOWNLOADED`). You can selectively delete individual videos or clear the entire card with built-in safety warnings that prevent accidental deletion of un-saved footage.
 
 *If your PC is already connected to the VRX Wi-Fi, you can use the `📥 Download Only` button to skip the Wi-Fi switching step.*
 

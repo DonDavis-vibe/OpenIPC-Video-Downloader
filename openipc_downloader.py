@@ -104,8 +104,8 @@ class VRXFileManagerWindow(ctk.CTkToplevel):
         self.vrx_url = vrx_url
         self.vrx_ssid = vrx_ssid
         self.title("VRX File Manager - SD Card Cleanup")
-        self.geometry("620x520")
-        self.minsize(520, 420)
+        self.geometry("700x520")
+        self.minsize(600, 420)
         
         self.transient(parent)
         self.grab_set()
@@ -177,10 +177,23 @@ class VRXFileManagerWindow(ctk.CTkToplevel):
                 self.after(0, lambda: self.refresh_btn.configure(state="normal"))
                 return
 
+            target_dir = self.parent.save_dir.get().strip()
+            history_path = os.path.join(target_dir, ".sync_history.json")
+            sync_history = {}
+            if os.path.exists(history_path):
+                try:
+                    with open(history_path, "r", encoding="utf-8") as f:
+                        sync_history = json.load(f)
+                except Exception:
+                    pass
+
+            local_files = os.listdir(target_dir) if os.path.exists(target_dir) else []
+
             video_info = []
             for idx, v_url in enumerate(found):
                 fname = os.path.basename(urllib.parse.unquote(v_url))
                 size_str = "Unknown size"
+                size_bytes = 0
                 try:
                     req = urllib.request.Request(v_url, method='HEAD')
                     with urllib.request.urlopen(req, timeout=2) as resp:
@@ -189,7 +202,30 @@ class VRXFileManagerWindow(ctk.CTkToplevel):
                             size_str = f"{size_bytes / (1024*1024):.1f} MB"
                 except Exception:
                     pass
-                video_info.append((fname, size_str))
+
+                is_saved = False
+                status_text = "⚠️ NOT DOWNLOADED"
+                status_color = "#EF4444" # Red
+
+                if fname in sync_history and (size_bytes == 0 or sync_history[fname].get('remote_size', -1) in (size_bytes, 0)):
+                    is_saved = True
+                    status_text = "✅ Saved"
+                    status_color = "#10B981"
+                else:
+                    base_no_ext, ext = os.path.splitext(fname)
+                    for lf in local_files:
+                        if lf == fname or lf.endswith("_" + fname):
+                            is_saved = True
+                            status_text = "✅ Saved"
+                            status_color = "#10B981"
+                            break
+                        if lf == f"{base_no_ext}_h264{ext}" or lf.endswith(f"_{base_no_ext}_h264{ext}"):
+                            is_saved = True
+                            status_text = "✅ Saved (H.264)"
+                            status_color = "#10B981"
+                            break
+
+                video_info.append((fname, size_str, is_saved, status_text, status_color))
 
             self.after(0, lambda: self._populate_list(video_info))
         except Exception as e:
@@ -202,23 +238,30 @@ class VRXFileManagerWindow(ctk.CTkToplevel):
         if video_info:
             self.delete_all_btn.configure(state="normal")
 
-        for fname, size_str in video_info:
+        for fname, size_str, is_saved, status_text, status_color in video_info:
             row_frame = ctk.CTkFrame(self.list_frame, fg_color=("#2B2B2B", "#1F1F1F"), corner_radius=8)
             row_frame.pack(fill="x", pady=4, padx=4)
 
             name_lbl = ctk.CTkLabel(row_frame, text=fname, font=ctk.CTkFont(size=13, weight="bold"), anchor="w")
             name_lbl.pack(side="left", padx=12, pady=10, fill="x", expand=True)
 
-            size_lbl = ctk.CTkLabel(row_frame, text=size_str, font=ctk.CTkFont(size=12), text_color="gray", width=80)
-            size_lbl.pack(side="left", padx=10)
+            size_lbl = ctk.CTkLabel(row_frame, text=size_str, font=ctk.CTkFont(size=12), text_color="gray", width=70)
+            size_lbl.pack(side="left", padx=5)
+
+            status_lbl = ctk.CTkLabel(row_frame, text=status_text, font=ctk.CTkFont(size=12, weight="bold"), text_color=status_color, width=140)
+            status_lbl.pack(side="left", padx=10)
 
             del_btn = ctk.CTkButton(row_frame, text="🗑️ Delete", width=80, height=32, fg_color="#EF4444", hover_color="#DC2626",
-                                    command=lambda f=fname, rf=row_frame: self.delete_single_video(f, rf))
+                                    command=lambda f=fname, rf=row_frame, saved=is_saved: self.delete_single_video(f, rf, saved))
             del_btn.pack(side="right", padx=10, pady=6)
-            self.video_rows.append((fname, row_frame))
+            self.video_rows.append((fname, row_frame, is_saved))
 
-    def delete_single_video(self, fname, row_frame):
-        if not messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete '{fname}' from the VRX?"):
+    def delete_single_video(self, fname, row_frame, is_saved):
+        if not is_saved:
+            msg = f"⚠️ WARNING: '{fname}' has NOT been downloaded to your PC yet!\n\nAre you sure you want to permanently delete un-saved footage from the VRX?"
+        else:
+            msg = f"Are you sure you want to delete '{fname}' from the VRX?"
+        if not messagebox.askyesno("Confirm Delete", msg):
             return
         
         self.status_lbl.configure(text=f"Deleting {fname}...", text_color="#F59E0B")
@@ -246,7 +289,12 @@ class VRXFileManagerWindow(ctk.CTkToplevel):
     def delete_all_videos(self):
         if not self.video_rows:
             return
-        if not messagebox.askyesno("Confirm Delete All", f"Are you sure you want to PERMANENTLY DELETE all {len(self.video_rows)} video(s) from the VRX SD Card?"):
+        unsaved_count = sum(1 for item in self.video_rows if not item[2])
+        if unsaved_count > 0:
+            msg = f"⚠️ WARNING: {unsaved_count} of the {len(self.video_rows)} video(s) have NOT been downloaded to your PC yet!\n\nAre you sure you want to PERMANENTLY DELETE all videos including un-saved footage?"
+        else:
+            msg = f"Are you sure you want to PERMANENTLY DELETE all {len(self.video_rows)} video(s) from the VRX SD Card?"
+        if not messagebox.askyesno("Confirm Delete All", msg):
             return
         
         self.status_lbl.configure(text="Deleting all videos...", text_color="#F59E0B")
@@ -259,7 +307,7 @@ class VRXFileManagerWindow(ctk.CTkToplevel):
             if not url_base.endswith('/'): url_base += '/'
 
             import time
-            for fname, row_frame in list(self.video_rows):
+            for fname, row_frame, is_saved in list(self.video_rows):
                 try:
                     del_url = f"{url_base}delete/{urllib.parse.quote(fname)}"
                     urllib.request.urlopen(del_url, timeout=5)
