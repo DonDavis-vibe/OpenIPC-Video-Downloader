@@ -228,10 +228,13 @@ class VRXFileManagerWindow(ctk.CTkToplevel):
                             status_text = "✅ Saved"
                             status_color = "#10B981"
                             break
-                        if lf == f"{base_no_ext}_h264{ext}" or lf.endswith(f"_{base_no_ext}_h264{ext}"):
-                            is_saved = True
-                            status_text = "✅ Saved (H.264)"
-                            status_color = "#10B981"
+                        for suffix in ("_h264" + ext, "_prores.mov", "_dnxhr.mov"):
+                            if lf == f"{base_no_ext}{suffix}" or lf.endswith(f"_{base_no_ext}{suffix}"):
+                                is_saved = True
+                                status_text = f"✅ Saved ({suffix.split('.')[0][1:].upper()})"
+                                status_color = "#10B981"
+                                break
+                        if is_saved:
                             break
 
                 video_info.append((fname, size_str, is_saved, status_text, status_color))
@@ -351,7 +354,8 @@ class OpenIPCFlightDownloader(ctk.CTk):
         default_save_path = os.path.join(os.path.expanduser("~"), "Videos", "OpenIPC_Flights")
         self.save_dir = ctk.StringVar(value=default_save_path)
         self.auto_reconnect = ctk.BooleanVar(value=True)
-        self.convert_h264 = ctk.BooleanVar(value=False)
+        self.auto_convert = ctk.BooleanVar(value=False)
+        self.convert_format = ctk.StringVar(value="H.264 (.mp4)")
         self.delete_original = ctk.BooleanVar(value=False)
         self.delete_from_vrx = ctk.BooleanVar(value=False)
 
@@ -434,8 +438,10 @@ class OpenIPCFlightDownloader(ctk.CTk):
         opt_row1.pack(fill="x", pady=(0, 4))
         reconnect_chk = ctk.CTkCheckBox(opt_row1, text="Auto-reconnect to Home Wi-Fi", variable=self.auto_reconnect)
         reconnect_chk.pack(side="left", padx=(0, 20))
-        convert_chk = ctk.CTkCheckBox(opt_row1, text="Auto-convert H.265 to H.264 (Requires FFmpeg)", variable=self.convert_h264)
+        convert_chk = ctk.CTkCheckBox(opt_row1, text="Auto-convert to:", variable=self.auto_convert)
         convert_chk.pack(side="left")
+        format_dropdown = ctk.CTkOptionMenu(opt_row1, values=["H.264 (.mp4)", "ProRes 422 (.mov)", "DNxHR SQ (.mov)"], variable=self.convert_format, width=140, fg_color="#374151", button_color="#4B5563")
+        format_dropdown.pack(side="left", padx=(5, 0))
 
         opt_row2 = ctk.CTkFrame(options_frame, fg_color="transparent")
         opt_row2.pack(fill="x", pady=(2, 0))
@@ -733,9 +739,12 @@ class OpenIPCFlightDownloader(ctk.CTk):
                             is_local = True
                             matching_lf = lf
                             break
-                        if lf == f"{base_no_ext}_h264{ext}" or lf.endswith(f"_{base_no_ext}_h264{ext}"):
-                            is_local = True
-                            matching_lf = lf
+                        for suffix in ("_h264" + ext, "_prores.mov", "_dnxhr.mov"):
+                            if lf == f"{base_no_ext}{suffix}" or lf.endswith(f"_{base_no_ext}{suffix}"):
+                                is_local = True
+                                matching_lf = lf
+                                break
+                        if is_local:
                             break
 
                     if is_local:
@@ -794,13 +803,14 @@ class OpenIPCFlightDownloader(ctk.CTk):
                         except Exception as e:
                             self.log(f"    ⚠️ Could not save history: {e}")
 
-                        if self.convert_h264.get() and local_path.lower().endswith(('.mp4', '.mov')):
-                            self.log(f"    ⏳ Converting to H.264: {new_fname}...")
+                        if self.auto_convert.get() and local_path.lower().endswith(('.mp4', '.mov')):
+                            fmt = self.convert_format.get()
+                            self.log(f"    ⏳ Converting to {fmt}: {new_fname}...")
                             self.update_status(f"Converting {new_fname}...", "#F59E0B")
-                            self.file_progress_lbl.configure(text=f"Current File Progress: Converting H.264...")
+                            self.file_progress_lbl.configure(text=f"Current File Progress: Converting {fmt}...")
                             self.file_progress_bar.set(0)
                             self.file_start_time = time.time()
-                            new_path = self._convert_to_h264(local_path)
+                            new_path = self._convert_video(local_path, fmt)
                             if new_path:
                                 conv_time = time.time() - self.file_start_time
                                 self.log(f"    ✅ Converted: {os.path.basename(new_path)} (Took {conv_time:.1f}s)")
@@ -861,11 +871,20 @@ class OpenIPCFlightDownloader(ctk.CTk):
             self.manage_vrx_btn.configure(state="normal")
             self.abort_btn.configure(state="disabled")
 
-    def _convert_to_h264(self, input_path):
+    def _convert_video(self, input_path, fmt):
         base, ext = os.path.splitext(input_path)
-        output_path = f"{base}_h264{ext}"
-        try:
+        
+        if fmt == "ProRes 422 (.mov)":
+            output_path = f"{base}_prores.mov"
+            cmd = ["ffmpeg", "-y", "-i", input_path, "-c:v", "prores_ks", "-profile:v", "2", "-qscale:v", "11", "-c:a", "copy", output_path]
+        elif fmt == "DNxHR SQ (.mov)":
+            output_path = f"{base}_dnxhr.mov"
+            cmd = ["ffmpeg", "-y", "-i", input_path, "-c:v", "dnxhd", "-profile:v", "dnxhr_sq", "-c:a", "copy", output_path]
+        else: # H.264
+            output_path = f"{base}_h264.mp4"
             cmd = ["ffmpeg", "-y", "-i", input_path, "-c:v", "libx264", "-crf", "23", "-preset", "fast", "-c:a", "copy", output_path]
+            
+        try:
             creation_flags = subprocess.CREATE_NO_WINDOW if OS_NAME == "Windows" else 0
             
             process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, creationflags=creation_flags)

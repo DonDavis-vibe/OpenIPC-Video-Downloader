@@ -29,7 +29,7 @@ As an FPV pilot using an OpenIPC digital video system, getting your flight foota
 - 📅 **Automatic Date Prefixing** — Automatically prefixes downloaded footage with today's date (e.g., `2026-07-28_0005...mp4`) so you can easily organize flights even if the VRX internal clock reset to 2017.
 - 📂 **Visual VRX File Manager** — Interactive popup window to view all videos on your VRX SD card, see file sizes in MB, check download status (`✅ Saved` vs `⚠️ NOT DOWNLOADED`), and selectively delete files with safety warnings.
 - 🗑️ **Auto-Delete from VRX SD Card** — Option to automatically wipe footage from your VRX SD card over HTTP immediately after verifying a clean download on your PC (includes an interactive risk warning prompt).
-- 🎬 **H.264 Auto-Conversion** — Optionally converts H.265 videos to H.264 on the fly using FFmpeg for easier editing and playback.
+- 🎬 **Multi-Format Auto-Conversion** — Selectively convert H.265 videos on the fly using FFmpeg with an interactive format dropdown supporting **`H.264 (.mp4)`** (universal playback/editing), **`ProRes 422 (.mov)`** (buttery smooth Apple editing), and **`DNxHR SQ (.mov)`** (professional cross-platform editing).
 - 🗑️ **Auto-Cleanup** — Option to automatically delete the original H.265 file after a successful conversion.
 - 🌍 **Cross-Platform** — Works flawlessly on Windows, macOS, and Linux.
 - 🔔 **Native Notifications** — Get desktop alerts when downloads finish.
