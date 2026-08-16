@@ -9,6 +9,7 @@ import urllib.request
 import urllib.parse
 import json
 import datetime
+import shutil
 from html.parser import HTMLParser
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -874,15 +875,19 @@ class OpenIPCFlightDownloader(ctk.CTk):
     def _convert_video(self, input_path, fmt):
         base, ext = os.path.splitext(input_path)
         
+        # Try to find ffmpeg in the same directory as the script, fallback to system PATH
+        local_ffmpeg = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ffmpeg.exe" if OS_NAME == "Windows" else "ffmpeg")
+        ffmpeg_cmd = local_ffmpeg if os.path.exists(local_ffmpeg) else (shutil.which("ffmpeg") or "ffmpeg")
+        
         if fmt == "ProRes 422 (.mov)":
             output_path = f"{base}_prores.mov"
-            cmd = ["ffmpeg", "-y", "-i", input_path, "-c:v", "prores_ks", "-profile:v", "2", "-qscale:v", "11", "-c:a", "copy", output_path]
+            cmd = [ffmpeg_cmd, "-y", "-i", input_path, "-c:v", "prores_ks", "-profile:v", "2", "-qscale:v", "11", "-c:a", "copy", output_path]
         elif fmt == "DNxHR SQ (.mov)":
             output_path = f"{base}_dnxhr.mov"
-            cmd = ["ffmpeg", "-y", "-i", input_path, "-c:v", "dnxhd", "-profile:v", "dnxhr_sq", "-c:a", "copy", output_path]
+            cmd = [ffmpeg_cmd, "-y", "-i", input_path, "-c:v", "dnxhd", "-profile:v", "dnxhr_sq", "-c:a", "copy", output_path]
         else: # H.264
             output_path = f"{base}_h264.mp4"
-            cmd = ["ffmpeg", "-y", "-i", input_path, "-c:v", "libx264", "-crf", "23", "-preset", "fast", "-c:a", "copy", output_path]
+            cmd = [ffmpeg_cmd, "-y", "-i", input_path, "-c:v", "libx264", "-crf", "23", "-preset", "fast", "-c:a", "copy", output_path]
             
         try:
             creation_flags = subprocess.CREATE_NO_WINDOW if OS_NAME == "Windows" else 0
