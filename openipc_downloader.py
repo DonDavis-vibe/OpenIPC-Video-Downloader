@@ -728,34 +728,50 @@ class OpenIPCFlightDownloader(ctk.CTk):
                         pass
 
                     size_mb = f" ({remote_size/(1024*1024):.1f} MB)" if remote_size > 0 else ""
-                    if fname in sync_history and (remote_size == 0 or sync_history[fname].get('remote_size', -1) in (remote_size, 0)):
-                        self.log(f"[-] Skipping (in history): {fname}{size_mb}")
-                        continue
-                    
-                    is_local = False
-                    matching_lf = ""
+                    is_local_converted = False
+                    is_local_unconverted = False
+                    unconverted_lf = ""
                     base_no_ext, ext = os.path.splitext(fname)
+
+                    # Check what we have locally
                     for lf in local_files:
                         if lf == fname or lf.endswith("_" + fname):
-                            is_local = True
-                            matching_lf = lf
-                            break
+                            is_local_unconverted = True
+                            unconverted_lf = lf
                         for suffix in ("_h264" + ext, "_prores.mov", "_dnxhr.mov"):
                             if lf == f"{base_no_ext}{suffix}" or lf.endswith(f"_{base_no_ext}{suffix}"):
-                                is_local = True
-                                matching_lf = lf
+                                is_local_converted = True
                                 break
-                        if is_local:
-                            break
 
-                    if is_local:
-                        self.log(f"[-] Skipping (exists locally): {fname}{size_mb}")
-                        sync_history[fname] = {"remote_size": remote_size, "local_filename": matching_lf}
-                        try:
-                            with open(history_path, 'w', encoding='utf-8') as f:
-                                json.dump(sync_history, f, indent=4)
-                        except Exception:
-                            pass
+                    # Handle history vs local presence
+                    if fname in sync_history and (remote_size == 0 or sync_history[fname].get('remote_size', -1) in (remote_size, 0)):
+                        hist_lf = sync_history[fname].get('local_filename', fname)
+                        hist_path = os.path.join(target_dir, hist_lf)
+                        conv_failed = sync_history[fname].get('conversion_failed', False)
+                        if self.auto_convert.get() and not is_local_converted and not conv_failed and os.path.exists(hist_path):
+                            self.log(f"[-] Queuing for conversion (exists unconverted): {hist_lf}")
+                            to_download.append((None, fname, hist_lf, hist_path, remote_size))
+                        else:
+                            self.log(f"[-] Skipping (in history): {fname}{size_mb}")
+                        continue
+
+                    if is_local_converted or is_local_unconverted:
+                        if not (fname in sync_history and sync_history[fname].get('remote_size', -1) == remote_size):
+                            # Self-heal history if missing but file exists
+                            sync_history[fname] = {"remote_size": remote_size, "local_filename": unconverted_lf if is_local_unconverted else fname}
+                            try:
+                                with open(history_path, 'w', encoding='utf-8') as f:
+                                    json.dump(sync_history, f, indent=4)
+                            except Exception:
+                                pass
+                        
+                        conv_failed = sync_history.get(fname, {}).get('conversion_failed', False)
+                        if self.auto_convert.get() and not is_local_converted and not conv_failed and is_local_unconverted:
+                            local_path = os.path.join(target_dir, unconverted_lf)
+                            self.log(f"[-] Queuing for conversion (exists unconverted locally): {unconverted_lf}")
+                            to_download.append((None, fname, unconverted_lf, local_path, remote_size))
+                        else:
+                            self.log(f"[-] Skipping (exists locally): {fname}{size_mb}")
                         continue
                         
                     today_str = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -781,18 +797,23 @@ class OpenIPCFlightDownloader(ctk.CTk):
                         break
 
                     self.current_idx = idx
-                    self.update_status(f"Downloading {idx+1}/{self.total_to_dl}: {new_fname}", "#10B981")
                     size_mb_str = f" ({remote_size/(1024*1024):.1f} MB)" if remote_size > 0 else ""
-                    self.log(f"[*] Downloading [{idx+1}/{self.total_to_dl}]: {new_fname}{size_mb_str}...")
                     
-                    self.file_progress_bar.set(0)
-                    self.file_start_time = time.time()
-                    success = self._download_file(v_url, local_path)
+                    if v_url is not None:
+                        self.update_status(f"Downloading {idx+1}/{self.total_to_dl}: {new_fname}", "#10B981")
+                        self.log(f"[*] Downloading [{idx+1}/{self.total_to_dl}]: {new_fname}{size_mb_str}...")
+                        self.file_progress_bar.set(0)
+                        self.file_start_time = time.time()
+                        success = self._download_file(v_url, local_path)
+                    else:
+                        success = True
+                        self.log(f"[*] Processing existing local file [{idx+1}/{self.total_to_dl}]: {new_fname}...")
                     
                     if success:
-                        dl_time = time.time() - self.file_start_time
-                        downloaded_count += 1
-                        self.log(f"    ✅ Saved: {local_path}{size_mb_str} (Took {dl_time:.1f}s)")
+                        if v_url is not None:
+                            dl_time = time.time() - self.file_start_time
+                            downloaded_count += 1
+                            self.log(f"    ✅ Saved: {local_path}{size_mb_str} (Took {dl_time:.1f}s)")
                         
                         sync_history[orig_fname] = {
                             "remote_size": remote_size,
@@ -822,7 +843,13 @@ class OpenIPCFlightDownloader(ctk.CTk):
                                     except Exception as e:
                                         self.log(f"    ⚠️ Could not delete original: {e}")
                             else:
-                                self.log(f"    ❌ Conversion failed. Check the log above for details.")
+                                self.log(f"    ❌ Conversion failed (file may be corrupted). Will not retry.")
+                                sync_history[orig_fname]["conversion_failed"] = True
+                                try:
+                                    with open(history_path, 'w', encoding='utf-8') as f:
+                                        json.dump(sync_history, f, indent=4)
+                                except Exception:
+                                    pass
 
                         if self.delete_from_vrx.get():
                             self.log(f"    🗑️ Auto-deleting from VRX SD card: {orig_fname}...")
@@ -881,14 +908,55 @@ class OpenIPCFlightDownloader(ctk.CTk):
         
         if fmt == "ProRes 422 (.mov)":
             output_path = f"{base}_prores.mov"
-            cmd = [ffmpeg_cmd, "-y", "-i", input_path, "-c:v", "prores_ks", "-profile:v", "2", "-qscale:v", "11", "-c:a", "copy", output_path]
+            encode_args = ["-c:v", "prores_ks", "-profile:v", "2", "-qscale:v", "11", "-c:a", "copy"]
         elif fmt == "DNxHR SQ (.mov)":
             output_path = f"{base}_dnxhr.mov"
-            cmd = [ffmpeg_cmd, "-y", "-i", input_path, "-c:v", "dnxhd", "-profile:v", "dnxhr_sq", "-c:a", "copy", output_path]
+            encode_args = ["-c:v", "dnxhd", "-profile:v", "dnxhr_sq", "-c:a", "copy"]
         else: # H.264
             output_path = f"{base}_h264.mp4"
-            cmd = [ffmpeg_cmd, "-y", "-i", input_path, "-c:v", "libx264", "-crf", "23", "-preset", "fast", "-c:a", "copy", output_path]
+            encode_args = ["-c:v", "libx264", "-crf", "23", "-preset", "fast", "-c:a", "copy"]
+
+        # Build list of attempts: normal first, then raw stream repair fallbacks
+        attempts = [
+            {"label": None, "input_args": ["-i", input_path]},
+            {"label": "raw HEVC", "input_args": ["-f", "hevc", "-framerate", "60", "-probesize", "100M", "-analyzeduration", "200M", "-i", input_path]},
+            {"label": "raw H.264", "input_args": ["-f", "h264", "-framerate", "60", "-probesize", "100M", "-analyzeduration", "200M", "-i", input_path]},
+            {"label": "raw MPEG-TS", "input_args": ["-f", "mpegts", "-probesize", "100M", "-analyzeduration", "200M", "-i", input_path]},
+        ]
+
+        for attempt in attempts:
+            if self.stop_requested:
+                return None
+
+            cmd = [ffmpeg_cmd, "-y"] + attempt["input_args"] + encode_args + [output_path]
+            label = attempt["label"]
+
+            if label:
+                self.log(f"    🔧 Attempting repair (reading as {label} stream)...")
+
+            result = self._run_ffmpeg(cmd, output_path)
+
+            if result:
+                if label:
+                    self.log(f"    ✅ Repair successful via {label} stream!")
+                return result
             
+            # Clean up failed output before next attempt
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except Exception:
+                    pass
+
+            if self.stop_requested:
+                return None
+
+        # All attempts failed
+        self.log(f"    [!] All conversion attempts failed. File may be unrecoverable.")
+        return None
+
+    def _run_ffmpeg(self, cmd, output_path):
+        """Run an FFmpeg command and return output_path on success, None on failure."""
         try:
             creation_flags = subprocess.CREATE_NO_WINDOW if OS_NAME == "Windows" else 0
             
@@ -927,8 +995,16 @@ class OpenIPCFlightDownloader(ctk.CTk):
                 self.file_progress_bar.set(1.0)
                 return output_path
             else:
-                err_out = " | ".join(last_errors[-3:]) if last_errors else "Unknown Error"
-                self.log(f"    [!] FFmpeg returned an error (code {process.returncode}): {err_out}")
+                if not self.stop_requested:
+                    err_out = " | ".join(last_errors[-3:]) if last_errors else "Unknown Error"
+                    self.log(f"    [!] FFmpeg error (code {process.returncode}): {err_out}")
+                
+                if os.path.exists(output_path):
+                    try:
+                        os.remove(output_path)
+                    except Exception:
+                        pass
+                
                 return None
         except FileNotFoundError:
             self.log("    [!] FileNotFoundError: 'ffmpeg' command not found. Please ensure FFmpeg is installed AND added to your system PATH.")
